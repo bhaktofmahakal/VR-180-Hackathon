@@ -6,14 +6,38 @@ import os
 from PIL import Image
 import base64
 from scipy import ndimage
-from skimage import feature, filters
 import requests
-import torch
-import torchvision.transforms as transforms
-from huggingface_hub import hf_hub_download
 import io
 import warnings
 warnings.filterwarnings('ignore')
+
+# Optional imports with fallbacks
+try:
+    from skimage import feature, filters
+    SKIMAGE_AVAILABLE = True
+except ImportError:
+    SKIMAGE_AVAILABLE = False
+    st.warning("⚠️ scikit-image not available - using OpenCV fallbacks")
+
+try:
+    import torch
+    import torchvision.transforms as transforms
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    st.info("📱 Torch not available - using CPU-only processing")
+
+try:
+    from huggingface_hub import hf_hub_download
+    HUGGINGFACE_AVAILABLE = True
+except ImportError:
+    HUGGINGFACE_AVAILABLE = False
+
+try:
+    import timm
+    TIMM_AVAILABLE = True
+except ImportError:
+    TIMM_AVAILABLE = False
 
 # Page config
 st.set_page_config(
@@ -103,13 +127,21 @@ class VR180Converter:
         
         # Try to load local depth model if available
         self.local_depth_model = None
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if TORCH_AVAILABLE:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = None
         
     def load_local_depth_model(self):
         """Load optimized local depth model"""
         try:
+            if not TORCH_AVAILABLE:
+                return False
+                
             # Use lightweight MiDaS model for CPU
-            import timm
+            if TIMM_AVAILABLE:
+                import timm
+                
             model = torch.hub.load('intel-isl/MiDaS', 'MiDaS_small')
             model.eval()
             if torch.cuda.is_available():
@@ -253,6 +285,9 @@ class VR180Converter:
     def estimate_depth_local_optimized(self, image):
         """Optimized local depth estimation using pre-trained model"""
         try:
+            if not TORCH_AVAILABLE:
+                return self.estimate_depth_fallback(image)
+                
             if self.local_depth_model is None:
                 if not self.load_local_depth_model():
                     return self.estimate_depth_fallback(image)
