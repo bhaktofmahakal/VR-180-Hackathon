@@ -1,0 +1,12 @@
+streamlit==1.28.1
+opencv-python==4.8.1.78
+numpy==1.24.3
+Pillow==10.0.1
+torch==2.0.1
+torchvision==0.15.2
+transformers==4.33.2
+diffusers==0.21.4
+accelerate==0.23.0
+scipy==1.11.3
+moviepy==1.0.3
+huggingface-hub==0.17.3
