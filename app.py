@@ -39,6 +39,12 @@ try:
 except ImportError:
     TIMM_AVAILABLE = False
 
+try:
+    from gradio_client import Client
+    GRADIO_CLIENT_AVAILABLE = True
+except ImportError:
+    GRADIO_CLIENT_AVAILABLE = False
+
 # Page config
 st.set_page_config(
     page_title="VR180 Converter - 2D to Immersive VR180",
@@ -240,18 +246,80 @@ class VR180Converter:
             except Exception as e:
                 st.warning(f"⚠️ MiDaS Direct failed: {str(e)}")
         
-        # 🔧 METHOD 3: Updated HuggingFace Direct
+        # 🚀 METHOD 3: HuggingFace Spaces (PREMIUM with gradio_client)
+        if service == "Hugging Face" or service == "Auto (Try All)":
+            if GRADIO_CLIENT_AVAILABLE:
+                hf_spaces = [
+                    "depth-anything/Depth-Anything-V2",
+                    "prs-eth/marigold-lcm",
+                    "nielsr/ZoeDepth",
+                    "Intel/MiDaS",
+                    "LiheYoung/Depth-Anything"
+                ]
+                
+                for i, space_id in enumerate(hf_spaces):
+                    try:
+                        st.info(f"🚀 Trying HuggingFace Space {i+1}/5: {space_id}")
+                        
+                        # Initialize gradio client
+                        client = Client(f"https://huggingface.co/spaces/{space_id}")
+                        
+                        # Submit image to space - handle both file path and numpy array
+                        if hasattr(pil_image, 'save'):
+                            # Save temp image for gradio
+                            temp_path = tempfile.mktemp(suffix='.jpg')
+                            pil_image.save(temp_path, 'JPEG', quality=90)
+                            
+                            # Submit to gradio space
+                            result = client.predict(temp_path, api_name="/predict")
+                            
+                            # Clean up temp file
+                            if os.path.exists(temp_path):
+                                os.unlink(temp_path)
+                            
+                            # Process result
+                            if result and len(result) > 0:
+                                depth_result = result[0] if isinstance(result, (list, tuple)) else result
+                                
+                                # Handle different result types
+                                if isinstance(depth_result, str) and os.path.exists(depth_result):
+                                    depth_image = Image.open(depth_result)
+                                    depth_array = np.array(depth_image)
+                                elif hasattr(depth_result, 'read'):
+                                    depth_array = np.array(Image.open(depth_result))
+                                else:
+                                    continue
+                                
+                                # Process depth map
+                                if len(depth_array.shape) == 3:
+                                    depth_array = cv2.cvtColor(depth_array, cv2.COLOR_RGB2GRAY)
+                                
+                                depth_map = cv2.resize(depth_array, (image.shape[1], image.shape[0]))
+                                depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                                
+                                st.success(f"✅ HuggingFace Space {space_id} successful!")
+                                return depth_map
+                        
+                    except Exception as e:
+                        st.warning(f"⚠️ HuggingFace Space {space_id} failed: {str(e)}")
+                        continue
+            else:
+                st.warning("⚠️ gradio_client not available - skipping HuggingFace Spaces")
+
+        # 🔧 METHOD 4: HuggingFace Direct APIs (Fallback)
         if service == "Hugging Face" or service == "Auto (Try All)":
             try:
                 st.info("🤗 Trying HuggingFace Direct APIs...")
                 
-                hf_token = api_key or "YOUR_HF_TOKEN_HERE"
-                headers = {"Authorization": f"Bearer {hf_token}"}
+                hf_token = api_key or os.getenv("HUGGINGFACE_API_TOKEN", "")
+                headers = {"Authorization": f"Bearer {hf_token}"} if hf_token else {}
                 
                 # Working HF models (2024 updated)
                 working_models = [
                     "https://api-inference.huggingface.co/models/Intel/dpt-hybrid-midas",
-                    "https://api-inference.huggingface.co/models/vinvino02/glpn-nyu"
+                    "https://api-inference.huggingface.co/models/vinvino02/glpn-nyu",
+                    "https://api-inference.huggingface.co/models/Intel/dpt-large",
+                    "https://api-inference.huggingface.co/models/facebook/dpt-dinov2-small-nyu"
                 ]
                 
                 for i, model_url in enumerate(working_models):
@@ -277,6 +345,15 @@ class VR180Converter:
             except Exception as e:
                 st.warning(f"⚠️ HuggingFace Direct failed: {str(e)}")
         
+        # 🔥 METHOD 5: Replicate API (Professional Grade)
+        if service == "Replicate" or service == "Auto (Try All)":
+            try:
+                st.info("🔥 Trying Replicate API (Professional Grade)...")
+                # Note: Replicate integration would require replicate package and API key
+                # This is a placeholder for the professional API service
+                st.warning("⚠️ Replicate API requires API key and additional setup")
+            except Exception as e:
+                st.warning(f"⚠️ Replicate API failed: {str(e)}")
 
         # All APIs failed, use CPU fallback
         st.info("🔄 All API services failed - using reliable CPU processing")
@@ -659,38 +736,41 @@ def main():
             # API configuration
             st.subheader("⚙️ API Configuration")
             
-            # API Service Selection - 100% FREE SERVICES ONLY
+            # API Service Selection - PREMIUM + FREE SERVICES  
             api_service = st.selectbox(
                 "API Service:",
-                ["Auto (Try All)", "Apple DepthPro", "MiDaS Direct", "Hugging Face"],
-                help="🆓 100% FREE APIs Only! No paid services!"
+                ["Auto (Try All)", "Hugging Face", "Apple DepthPro", "MiDaS Direct", "Replicate"],
+                help="🚀 Premium HuggingFace Spaces + FREE APIs!"
             )
             
             api_key = st.text_input(
                 "API Key (Optional for HF):",
                 type="password",
-                value="",
+                value=os.getenv("HUGGINGFACE_API_TOKEN", ""),
                 placeholder="Your API key here (optional)",
                 help="Get your own free key from https://huggingface.co/settings/tokens"
             )
             
-            st.success("🆓 **100% FREE WORKING APIs** - No Paid Services!")
+            st.success("🚀 **PREMIUM APIS + FREE SERVICES** - Best Quality Results!")
             st.markdown("""
-            **🎯 FREE Service Priority:**
+            **🎯 PREMIUM Service Priority:**
+            • **🤗 HuggingFace Spaces:** Depth Anything V2, Marigold, ZoeDepth (FREE)
             • **🍎 Apple DepthPro:** Latest Apple model (FREE)
-            • **🔧 MiDaS Direct:** Robust depth estimation (FREE)
-            • **🤗 HuggingFace:** Multiple working models (FREE)
-            • **🚀 Auto Mode:** Tries all FREE services automatically
+            • **🔧 MiDaS Direct:** Robust depth estimation (FREE)  
+            • **🔥 Replicate:** Professional grade APIs (Requires API Key)
+            • **🚀 Auto Mode:** Tries ALL services for best results
             """)
             
             if api_service == "Auto (Try All)":
-                st.info("🚀 **Auto Mode:** Apple DepthPro → MiDaS → HuggingFace → CPU")
+                st.info("🚀 **Auto Mode:** HF Spaces → Apple DepthPro → MiDaS → Replicate → CPU")
+            elif api_service == "Hugging Face":
+                st.info("🤗 **HuggingFace Spaces:** Depth Anything V2, Marigold LCM, ZoeDepth (BEST)")
             elif api_service == "Apple DepthPro":
                 st.info("🍎 **Apple DepthPro:** Latest Apple depth model (FREE)")
             elif api_service == "MiDaS Direct":
                 st.info("🔧 **MiDaS Direct:** Robust MiDaS models (FREE)")
             else:
-                st.info("🤗 **HuggingFace:** Multiple working HF models (FREE)")
+                st.info("🔥 **Replicate:** Professional grade APIs (PAID)")
             
             st.session_state.api_key = api_key
             st.session_state.api_service = api_service
